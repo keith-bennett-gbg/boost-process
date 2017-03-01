@@ -36,6 +36,11 @@ BOOST_AUTO_TEST_CASE(excplicit)
 
     fs::path pth = master_test_suite().argv[1];
     auto env = boost::this_process::environment();
+    for (auto & e : env)
+    	std::cerr << e.get_name() << " - " << e.to_string() << std::endl;
+
+
+    std::cerr << "-----------------------------------------------------------------------" << std::endl;
     env["PATH"] += fs::canonical(fs::absolute(pth.parent_path())).string();
 
     for (auto & e : env)
