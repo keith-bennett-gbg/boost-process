@@ -38,6 +38,10 @@ BOOST_AUTO_TEST_CASE(excplicit)
     auto env = boost::this_process::environment();
     env["PATH"] += fs::canonical(fs::absolute(pth.parent_path())).string();
 
+    for (auto & e : env)
+    	std::cerr << e.get_name() << " - " << e.to_string() << std::endl;
+
+
     int ret = bp::system(
         bp::cmd="sparring_partner --exit-code 42",
         ec
