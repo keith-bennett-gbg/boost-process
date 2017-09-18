@@ -186,13 +186,20 @@ class executor
 
     void write_error(const std::error_code & ec, const char * msg)
     {
+        // if we fail to report the failure to our parent, we're in a world of hurt
+        auto check_write = [](int result) {
+            if ( result < 0 ) {
+                throw std::runtime_error{"write(2) failed"};
+            }
+        };
+
         //I am the child
         int len = ec.value();
-        ::write(_pipe_sink, &len, sizeof(int));
+        check_write(::write(_pipe_sink, &len, sizeof(int)));
 
         len = std::strlen(msg) + 1;
-        ::write(_pipe_sink, &len, sizeof(int));
-        ::write(_pipe_sink, msg, len);
+        check_write(::write(_pipe_sink, &len, sizeof(int)));
+        check_write(::write(_pipe_sink, msg, len));
     }
 
     void internal_error_handle(const std::error_code &ec, const char* msg, boost::mpl::true_ , boost::mpl::false_, boost::mpl::false_)
