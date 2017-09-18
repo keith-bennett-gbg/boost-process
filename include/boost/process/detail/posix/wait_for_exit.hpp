@@ -19,162 +19,47 @@
 
 namespace boost { namespace process { namespace detail { namespace posix {
 
+inline bool no_error_and_no_process_has_changed_state(
+        int wait_result) noexcept
+{
+    if ( -1 == wait_result )
+        return (EINTR == errno);
+    if (0 == wait_result)
+        return true;
+    return false;
+}
+
+inline void wait(
+        const child_handle &p,
+        int & exit_code,
+        std::error_code &ec) noexcept
+{
+    pid_t ret;
+    int status;
+
+    do
+    {
+        ret = ::waitpid(p.pid, &status, 0);
+    }
+    while (no_error_and_no_process_has_changed_state(ret));
+
+    if (ret == -1)
+    {
+        ec = boost::process::detail::get_last_error();
+        return;
+    }
+
+    ec.clear();
+    exit_code = status;
+}
+
 inline void wait(const child_handle &p, int & exit_code)
 {
-    pid_t ret;
-    int status;
-    do
-    {
-        ret = ::waitpid(p.pid, &status, 0);
-    } while (((ret == -1) && (errno == EINTR)) || (ret != -1 && !WIFEXITED(status) && !WIFSIGNALED(status)));
-    if (ret == -1)
+    std::error_code ec;
+    wait(p, exit_code, ec);
+    if (ec)
         boost::process::detail::throw_last_error("waitpid(2) failed");
-    if (WIFSIGNALED(status))
-        throw process_error(std::error_code(), "process terminated due to receipt of a signal");
-     exit_code = status;
 }
-
-inline void wait(const child_handle &p, int & exit_code, std::error_code &ec) noexcept
-{
-    pid_t ret;
-    int status;
-
-    do
-    {
-        ret = ::waitpid(p.pid, &status, 0);
-    } 
-    while (((ret == -1) && (errno == EINTR)) || (ret != -1 && !WIFEXITED(status) && !WIFSIGNALED(status)));
-    
-    if (ret == -1)
-        ec = boost::process::detail::get_last_error();
-    else
-    {
-        ec.clear();
-        exit_code = status;
-    }
-  
-
-}
-
-template< class Rep, class Period >
-inline bool wait_for(
-        const child_handle &p,
-        int & exit_code,
-        const std::chrono::duration<Rep, Period>& rel_time)
-{
-
-    pid_t ret;
-    int status;
-
-    auto start = std::chrono::system_clock::now();
-    auto time_out = start + rel_time;
-
-    bool timed_out;
-    do
-    {
-        ret = ::waitpid(p.pid, &status, WNOHANG);
-        if (ret == 0)
-        {
-            timed_out = std::chrono::system_clock::now() >= time_out;    
-            if (timed_out)
-                return false;
-        }
-    } 
-    while ((ret == 0) ||
-           ((ret == -1) && errno == EINTR) ||
-           ((ret != -1) && !WIFEXITED(status) && !WIFSIGNALED(status)));
-
-    if (ret == -1)
-        boost::process::detail::throw_last_error("waitpid(2) failed");
-
-    exit_code = status;
-
-    return true;
-}
-
-
-template< class Rep, class Period >
-inline bool wait_for(
-        const child_handle &p,
-        int & exit_code,
-        const std::chrono::duration<Rep, Period>& rel_time,
-        std::error_code & ec) noexcept
-{
-
-    pid_t ret;
-    int status;
-
-    auto start = std::chrono::system_clock::now();
-    auto time_out = start + rel_time;
-    bool timed_out;
-
-    do
-    {
-        ret = ::waitpid(p.pid, &status, WNOHANG);
-        if (ret == 0)
-        {
-            timed_out = std::chrono::system_clock::now() >= time_out;    
-            if (timed_out)
-                return false;
-        }
-    } 
-    while ((ret == 0) ||
-          (((ret == -1) && errno == EINTR) ||
-           ((ret != -1) && !WIFEXITED(status) && !WIFSIGNALED(status))));
-
-
-    if (timed_out && (ret == -1))
-    	return false;
-
-    if (ret == -1)
-        ec = boost::process::detail::get_last_error();
-    else
-    {
-        ec.clear();
-        exit_code = status;
-    }
-
-    return true;
-}
-
-
-
-template< class Clock, class Duration >
-inline bool wait_until(
-        const child_handle &p,
-        int & exit_code,
-        const std::chrono::time_point<Clock, Duration>& time_out)
-{
-
-    pid_t ret;
-    int status;
-
-    bool timed_out;
-    do
-    {
-        ret = ::waitpid(p.pid, &status, WNOHANG);
-        if (ret == 0)
-        {
-            timed_out = std::chrono::system_clock::now() >= time_out;    
-            if (timed_out)
-                return false;
-        }
-    }
-    while ((ret == 0) ||
-          (((ret == -1) && errno == EINTR) ||
-           ((ret != -1) && !WIFEXITED(status) && !WIFSIGNALED(status))));
-
-
-    if (timed_out && !WIFEXITED(status))
-    	return false;
-
-    if (ret == -1)
-        boost::process::detail::throw_last_error("waitpid(2) failed");
-    exit_code = status;
-
-    return true;
-}
-
 
 template< class Clock, class Duration >
 inline bool wait_until(
@@ -192,31 +77,62 @@ inline bool wait_until(
     do
     {
         ret = ::waitpid(p.pid, &status, WNOHANG);
-        if (ret == 0)
-        {
-            timed_out = std::chrono::system_clock::now() >= time_out;    
-            if (timed_out)
-                return false;
-        }
-    } 
-    while ((ret == 0) ||
-          (((ret == -1) && errno == EINTR) ||
-           ((ret != -1) && !WIFEXITED(status) && !WIFSIGNALED(status))));
+        timed_out = std::chrono::system_clock::now() >= time_out;
+    }
+    while (no_error_and_no_process_has_changed_state(ret) && !timed_out);
 
-
-
-    if (timed_out && !WIFEXITED(status))
-    	return false;
-
-    if (ret == -1)
-        ec = boost::process::detail::get_last_error();
-    else
+    if (-1 == ret)
     {
-        ec.clear();
-        exit_code = status;
+        ec = boost::process::detail::get_last_error();
+        return !timed_out;
     }
 
+    ec.clear();
+    if (!timed_out)
+        exit_code = status;
     return true;
+}
+
+template< class Clock, class Duration >
+inline bool wait_until(
+        const child_handle &p,
+        int & exit_code,
+        const std::chrono::time_point<Clock, Duration>& time_out)
+{
+    std::error_code ec;
+    bool rvalue = wait_until(p, exit_code, time_out, ec);
+    if (ec)
+        boost::process::detail::throw_last_error("waitpid(2) failed");
+    return rvalue;
+}
+
+template< class Rep, class Period >
+inline bool wait_for(
+        const child_handle &p,
+        int & exit_code,
+        const std::chrono::duration<Rep, Period>& rel_time,
+        std::error_code & ec) noexcept
+{
+    pid_t ret;
+    int status;
+
+    auto start = std::chrono::system_clock::now();
+    auto time_out = start + rel_time;
+
+    return wait_until(p, exit_code, time_out, ec);
+}
+
+template< class Rep, class Period >
+inline bool wait_for(
+        const child_handle &p,
+        int & exit_code,
+        const std::chrono::duration<Rep, Period>& rel_time)
+{
+    std::error_code ec;
+    bool rvalue = wait_for(p, exit_code, rel_time, ec);
+    if ( ec )
+        boost::process::detail::throw_last_error("waitpid(2) failed");
+    return rvalue;
 }
 
 }}}}

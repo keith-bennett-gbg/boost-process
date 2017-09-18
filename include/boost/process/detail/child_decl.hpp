@@ -165,7 +165,7 @@ public:
         {
             int code;
             auto res = boost::process::detail::api::is_running(_child_handle, code, ec);
-            if (!res && !_exited())
+            if (!res)
                 _exit_status->store(code);
 
             return res;

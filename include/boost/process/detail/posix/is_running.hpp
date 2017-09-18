@@ -17,36 +17,14 @@ namespace boost { namespace process { namespace detail { namespace posix {
 constexpr int still_active = 0x7F;
 static_assert(!WIFEXITED(still_active), "Internal Error");
 
-inline bool is_running(const child_handle &p, int & exit_code)
-{
-    int status; 
-    auto ret = ::waitpid(p.pid, &status, WNOHANG|WUNTRACED);
-    
-    if (ret == -1)
-    {
-        if (errno != ECHILD) //because it no child is running, than this one isn't either, obviously.
-            ::boost::process::detail::throw_last_error("is_running error");
-
-        return false;
-    }
-    else if (ret == 0)
-        return true;
-    else //exited
-    {
-        if (WIFEXITED(status))
-            exit_code = status;
-        return false;
-    }
-}
-
 inline bool is_running(const child_handle &p, int & exit_code, std::error_code &ec) noexcept
 {
     int status;
-    auto ret = ::waitpid(p.pid, &status, WNOHANG|WUNTRACED); 
-    
+    auto ret = ::waitpid(p.pid, &status, WNOHANG);
+
     if (ret == -1)
     {
-        if (errno != ECHILD) //because it no child is running, than this one isn't either, obviously.
+        if (errno != ECHILD) //because if no child is running, than this one isn't either, obviously.
             ec = ::boost::process::detail::get_last_error();
         return false;
     }
@@ -55,12 +33,23 @@ inline bool is_running(const child_handle &p, int & exit_code, std::error_code &
     else
     {
         ec.clear();
-        
+
         if (WIFEXITED(status))
             exit_code = status;
-        
+
         return false;
     }
+}
+
+inline bool is_running(const child_handle & p, int & exit_code)
+{
+    std::error_code ec;
+    auto result = is_running(p, exit_code, ec);
+    if (ec)
+    {
+        ::boost::process::detail::throw_last_error("is_running error");
+    }
+    return result;
 }
 
 inline bool is_running(int code)
@@ -70,7 +59,7 @@ inline bool is_running(int code)
 
 inline int eval_exit_status(int code)
 {
-    return WEXITSTATUS(code);
+    return code;
 }
 
 }}}}
